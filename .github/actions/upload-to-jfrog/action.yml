@@ -1,21 +1,24 @@
 name: 'JFrog Artifact Uploader'
 description: |
-  Uploads a specified JAR and POM file to a specific JFrog Artifactory repository. 
+  Uploads a specified JAR and POM file to a specific JFrog Artifactory repository.
   The JFrog URL input must be the full URL to the target repository.
-  IMPORTANT: This action requires the `jfrog-access-token` secret to be set in the workflow.
+  IMPORTANT: This action requires the `jfrog-access-token` to be passed as an input from the workflow.
 
 inputs:
   jar-path:
-    description: 'Path to the JAR file to be uploaded.'
+    description: 'Absolute path to the JAR file to be uploaded.'
     required: true
   pom-path:
-    description: 'Path to the POM file.'
+    description: 'Absolute path to the POM file.'
     required: true
   repository-id:
     description: 'The ID of the target JFrog repository (must match the server ID in settings.xml).'
     required: true
   jfrog-url:
     description: 'The full URL of the target JFrog Artifactory repository (e.g., https://yourcompany.jfrog.io/artifactory/libs-release-local).'
+    required: true
+  jfrog-access-token:
+    description: 'The JFrog access token.'
     required: true
   java-version:
     description: 'The Java version to use.'
@@ -33,7 +36,7 @@ inputs:
 outputs:
   status:
     description: 'Indicates if the upload was successful ("success") or failed ("failed").'
-    value: ${{ steps.set-status.outputs.status }} # Points to the final status step
+    value: ${{ steps.set-status.outputs.status }}
 
 runs:
   using: 'composite'
@@ -54,17 +57,6 @@ runs:
           exit 1
         fi
 
-    - name: Check for JFrog Token Secret # <-- EXPLICIT CHECK FOR SECRET
-      shell: bash
-      env:
-        JFROG_TOKEN_CHECK: ${{ secrets.jfrog-access-token }}
-      run: |
-        if [ -z "${JFROG_TOKEN_CHECK}" ]; then
-          echo "::error::Secret 'jfrog-access-token' is required but not set. Please add it to your workflow secrets."
-          exit 1
-        fi
-        echo "JFrog token secret found."
-
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
@@ -75,8 +67,6 @@ runs:
     - id: write-settings
       name: Create Maven settings.xml
       shell: bash
-      env:
-        JFROG_TOKEN: ${{ secrets.jfrog-access-token }} # Secret is used here
       run: |
         SETTINGS_PATH="${{ runner.temp }}/jfrog-settings.xml"
         echo "Creating settings.xml at $SETTINGS_PATH"
@@ -88,14 +78,14 @@ runs:
             <server>
               <id>${{ inputs.repository-id }}</id>
               <username>_token</username>
-              <password>${JFROG_TOKEN}</password>
+              <password>${{ inputs.jfrog-access-token }}</password>
             </server>
           </servers>
         </settings>
         EOF
         echo "settings-path=$SETTINGS_PATH" >> "$GITHUB_OUTPUT"
 
-    - id: deploy # <-- Added ID
+    - id: deploy
       name: Deploy artifact to JFrog
       shell: bash
       run: |
@@ -108,11 +98,10 @@ runs:
           -s "${{ steps.write-settings.outputs.settings-path }}"
 
     - id: set-status
-      if: always() # Ensures this step always runs
+      if: always()
       name: Set final status output
       shell: bash
       run: |
-        # Check the outcome of the 'deploy' step
         if [ "${{ steps.deploy.outcome }}" == "success" ]; then
           echo "status=success" >> "$GITHUB_OUTPUT"
         else
