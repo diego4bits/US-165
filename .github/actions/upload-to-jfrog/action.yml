@@ -1,0 +1,120 @@
+name: 'JFrog Artifact Uploader'
+description: |
+  Uploads a specified JAR and POM file to a specific JFrog Artifactory repository. 
+  The JFrog URL input must be the full URL to the target repository.
+  IMPORTANT: This action requires the `jfrog-access-token` secret to be set in the workflow.
+
+inputs:
+  jar-path:
+    description: 'Path to the JAR file to be uploaded.'
+    required: true
+  pom-path:
+    description: 'Path to the POM file.'
+    required: true
+  repository-id:
+    description: 'The ID of the target JFrog repository (must match the server ID in settings.xml).'
+    required: true
+  jfrog-url:
+    description: 'The full URL of the target JFrog Artifactory repository (e.g., https://yourcompany.jfrog.io/artifactory/libs-release-local).'
+    required: true
+  java-version:
+    description: 'The Java version to use.'
+    required: false
+    default: '17'
+  java-distribution:
+    description: 'The Java distribution to use.'
+    required: false
+    default: 'temurin'
+  packaging:
+    description: 'The packaging type for Maven deployment.'
+    required: false
+    default: 'jar'
+
+outputs:
+  status:
+    description: 'Indicates if the upload was successful ("success") or failed ("failed").'
+    value: ${{ steps.set-status.outputs.status }} # Points to the final status step
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate JAR path
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.jar-path }}" ]; then
+          echo "::error::JAR file not found at ${{ inputs.jar-path }}"
+          exit 1
+        fi
+
+    - name: Validate POM path
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.pom-path }}" ]; then
+          echo "::error::POM file not found at ${{ inputs.pom-path }}"
+          exit 1
+        fi
+
+    - name: Check for JFrog Token Secret # <-- EXPLICIT CHECK FOR SECRET
+      shell: bash
+      env:
+        JFROG_TOKEN_CHECK: ${{ secrets.jfrog-access-token }}
+      run: |
+        if [ -z "${JFROG_TOKEN_CHECK}" ]; then
+          echo "::error::Secret 'jfrog-access-token' is required but not set. Please add it to your workflow secrets."
+          exit 1
+        fi
+        echo "JFrog token secret found."
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ inputs.java-distribution }}
+        java-version: ${{ inputs.java-version }}
+        cache: maven
+
+    - id: write-settings
+      name: Create Maven settings.xml
+      shell: bash
+      env:
+        JFROG_TOKEN: ${{ secrets.jfrog-access-token }} # Secret is used here
+      run: |
+        SETTINGS_PATH="${{ runner.temp }}/jfrog-settings.xml"
+        echo "Creating settings.xml at $SETTINGS_PATH"
+        cat > "$SETTINGS_PATH" <<EOF
+        <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+          <servers>
+            <server>
+              <id>${{ inputs.repository-id }}</id>
+              <username>_token</username>
+              <password>${JFROG_TOKEN}</password>
+            </server>
+          </servers>
+        </settings>
+        EOF
+        echo "settings-path=$SETTINGS_PATH" >> "$GITHUB_OUTPUT"
+
+    - id: deploy # <-- Added ID
+      name: Deploy artifact to JFrog
+      shell: bash
+      run: |
+        mvn deploy:deploy-file -B \
+          -Dfile="${{ inputs.jar-path }}" \
+          -DpomFile="${{ inputs.pom-path }}" \
+          -DrepositoryId="${{ inputs.repository-id }}" \
+          -Durl="${{ inputs.jfrog-url }}" \
+          -Dpackaging="${{ inputs.packaging }}" \
+          -s "${{ steps.write-settings.outputs.settings-path }}"
+
+    - id: set-status
+      if: always() # Ensures this step always runs
+      name: Set final status output
+      shell: bash
+      run: |
+        # Check the outcome of the 'deploy' step
+        if [ "${{ steps.deploy.outcome }}" == "success" ]; then
+          echo "status=success" >> "$GITHUB_OUTPUT"
+        else
+          echo "status=failed" >> "$GITHUB_OUTPUT"
+        fi

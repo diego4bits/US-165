@@ -1,0 +1,136 @@
+name: Test JFrog Upload Action with Environments
+
+on: [push, workflow_dispatch]
+
+jobs:
+  test-development:
+    runs-on: ubuntu-latest
+    environment: development
+    name: Test on Development
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 2. Generate Unique Data
+        id: unique
+        shell: bash
+        run: |
+          TIMESTAMP=$(date +%s)
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+          echo "version=1.0-dev.${TIMESTAMP}" >> "$GITHUB_OUTPUT" # <-- Versión DEV
+
+      - name: 3. Create Dummy POM
+        id: pom
+        shell: bash
+        run: |
+          VERSION=${{ steps.unique.outputs.version }}
+          POM_FILE="dummy-artifact-${VERSION}.pom"
+          echo "Creating $POM_FILE with version $VERSION"
+          cat > "$POM_FILE" <<EOF
+          <project>
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>com.test.local</groupId>
+            <artifactId>dummy-artifact</artifactId>
+            <version>${VERSION}</version>
+            <packaging>jar</packaging>
+          </project>
+          EOF
+          echo "pom_path=$POM_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: 4. Create Dummy JAR
+        id: jar
+        shell: bash
+        run: |
+          VERSION=${{ steps.unique.outputs.version }}
+          JAR_FILE="dummy-artifact-${VERSION}.jar"
+          echo "Creating dummy JAR $JAR_FILE"
+          echo "Test content - ${{ steps.unique.outputs.timestamp }}" > content.txt
+          zip "$JAR_FILE" content.txt
+          rm content.txt
+          echo "jar_path=$JAR_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: 5. Run Local JFrog Upload Action [Development]
+        id: upload-step
+        uses: ./.github/actions/jfrog-uploader
+        with:
+          jar-path: ${{ steps.jar.outputs.jar_path }}
+          pom-path: ${{ steps.pom.outputs.pom_path }}
+          repository-id: ${{ vars.REPO_ID }} 
+          jfrog-url: ${{ vars.JFROG_URL }}
+          jfrog-access-token: ${{ secrets.JFROG_ACCESS_TOKEN }} 
+
+      - name: 6. Verify Action Output
+        shell: bash
+        run: |
+          echo "Action finished with status: ${{ steps.upload-step.outputs.status }}"
+          if [ "${{ steps.upload-step.outputs.status }}" != "success" ]; then
+            echo "::error::Upload action failed for environment Development"
+            exit 1
+          fi
+          echo "Upload seems successful for Development!"
+
+  test-qa:
+    runs-on: ubuntu-latest
+    environment: qa 
+    name: Test on QA
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 2. Generate Unique Data
+        id: unique
+        shell: bash
+        run: |
+          TIMESTAMP=$(date +%s)
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+          echo "version=1.0-qa.${TIMESTAMP}" >> "$GITHUB_OUTPUT" # <-- Versión QA
+
+      - name: 3. Create Dummy POM
+        id: pom
+        shell: bash
+        run: |
+          VERSION=${{ steps.unique.outputs.version }}
+          POM_FILE="dummy-artifact-${VERSION}.pom"
+          echo "Creating $POM_FILE with version $VERSION"
+          cat > "$POM_FILE" <<EOF
+          <project>
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>com.test.local</groupId>
+            <artifactId>dummy-artifact</artifactId>
+            <version>${VERSION}</version>
+            <packaging>jar</packaging>
+          </project>
+          EOF
+          echo "pom_path=$POM_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: 4. Create Dummy JAR
+        id: jar
+        shell: bash
+        run: |
+          VERSION=${{ steps.unique.outputs.version }}
+          JAR_FILE="dummy-artifact-${VERSION}.jar"
+          echo "Creating dummy JAR $JAR_FILE"
+          echo "Test content - ${{ steps.unique.outputs.timestamp }}" > content.txt
+          zip "$JAR_FILE" content.txt
+          rm content.txt
+          echo "jar_path=$JAR_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: 5. Run Local JFrog Upload Action [QA]
+        id: upload-step
+        uses: ./.github/actions/jfrog-uploader
+        with:
+          jar-path: ${{ steps.jar.outputs.jar_path }}
+          pom-path: ${{ steps.pom.outputs.pom_path }}
+          repository-id: ${{ vars.REPO_ID }} 
+          jfrog-url: ${{ vars.JFROG_URL }}
+          jfrog-access-token: ${{ secrets.JFROG_ACCESS_TOKEN }} 
+
+      - name: 6. Verify Action Output
+        shell: bash
+        run: |
+          echo "Action finished with status: ${{ steps.upload-step.outputs.status }}"
+          if [ "${{ steps.upload-step.outputs.status }}" != "success" ]; then
+            echo "::error::Upload action failed for environment QA"
+            exit 1
+          fi
+          echo "Upload seems successful for QA!"
