@@ -51,7 +51,7 @@ jobs:
 
       - name: 5. Run Local JFrog Upload Action [Development]
         id: upload-step
-        uses: ./.github/actions/jfrog-uploader
+        uses: ./.github/actions/upload-to-jfrog
         with:
           jar-path: ${{ steps.jar.outputs.jar_path }}
           pom-path: ${{ steps.pom.outputs.pom_path }}
@@ -117,7 +117,7 @@ jobs:
 
       - name: 5. Run Local JFrog Upload Action [QA]
         id: upload-step
-        uses: ./.github/actions/jfrog-uploader
+        uses: ./.github/actions/upload-to-jfrog
         with:
           jar-path: ${{ steps.jar.outputs.jar_path }}
           pom-path: ${{ steps.pom.outputs.pom_path }}
