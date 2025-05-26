@@ -57,13 +57,6 @@ runs:
           exit 1
         fi
 
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: ${{ inputs.java-distribution }}
-        java-version: ${{ inputs.java-version }}
-        cache: ''
-
     - id: write-settings
       name: Create Maven settings.xml
       shell: bash
