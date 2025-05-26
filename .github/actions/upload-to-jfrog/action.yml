@@ -62,7 +62,7 @@ runs:
       with:
         distribution: ${{ inputs.java-distribution }}
         java-version: ${{ inputs.java-version }}
-        cache: maven
+        cache: ''
 
     - id: write-settings
       name: Create Maven settings.xml
