@@ -68,8 +68,3 @@ jobs:
           oidc-provider-name: github                   # = nombre de la integración en JFrog
           oidc-audience:      my-aud                       # opcional
 
-      - name: Verify deployment
-        if: always()
-        run: |
-          echo "Status: ${{ steps.deploy.outputs.status }}"
-          test "${{ steps.deploy.outputs.status }}" = "success"

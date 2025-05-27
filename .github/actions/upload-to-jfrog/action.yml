@@ -61,27 +61,29 @@ runs:
     - name: Configure Maven for JFrog CLI
       shell: bash
       run: |
-        jf rt mvn-config "${{ inputs.pom-path }}" \
-          --server-id=setup-jfrog-cli-server
+        # mueve al dir del POM para que mvn-config lo detecte
+        cd "$(dirname "${{ inputs.pom-path }}")"
+
+        jf rt mvn-config \
+          --server-id-deploy=setup-jfrog-cli-server \
+          --server-id-resolve=setup-jfrog-cli-server \
+          --repo-deploy-releases=${{ inputs.repository-id }} \
+          --repo-deploy-snapshots=${{ inputs.repository-id }} \
+          --repo-resolve-releases=${{ inputs.repository-id }} \
+          --repo-resolve-snapshots=${{ inputs.repository-id }}
+
+
+
     
-    # 4. Deploy via Maven through JFrog CLI
-    - id: deploy
-      name: Maven deploy
+
+    - name: Deploy with Maven to Artifactory
       shell: bash
       run: |
-        set -euo pipefail
         jf rt mvn "deploy:deploy-file" \
           -Dfile="${{ inputs.jar-path }}" \
           -DpomFile="${{ inputs.pom-path }}" \
           -DrepositoryId="${{ inputs.repository-id }}" \
-          -Durl="${{ inputs.jfrog-url }}/artifactory/${{ inputs.repository-id }}" \
+          -Durl="${{ inputs.jfrog-url }}" \
           -B
 
-    # 5. Resultado para el workflow
-    - id: set-status
-      if: always()
-      shell: bash
-      run: |
-        [[ "${{ steps.deploy.outcome }}" == "success" ]] \
-          && echo "status=success" >>"$GITHUB_OUTPUT" \
-          || echo "status=failed"  >>"$GITHUB_OUTPUT"
+
