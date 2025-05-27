@@ -58,14 +58,6 @@ runs:
         oidc-provider-name: ${{ inputs.oidc-provider-name }}
         oidc-audience: ${{ inputs.oidc-audience }}
 
-    # 3. Setup Java (Maven ya viene en runner, pero garantizamos el JDK)
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: ${{ inputs.java-distribution }}
-        java-version: ${{ inputs.java-version }}
-        cache: 'maven'
-
     # 4. Deploy via Maven through JFrog CLI
     - id: deploy
       name: Maven deploy
