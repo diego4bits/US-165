@@ -1,55 +1,56 @@
-name: 'JFrog Artifact Uploader'
+name: 'JFrog Maven Deployer'
 description: >
-  Uploads a JAR and its POM to JFrog Artifactory using JFrog CLI
-  authenticated through OpenID Connect (no long-lived access tokens).
+  Deploys a JAR and its POM to Artifactory with Maven CLI.
+  JFrog CLI fetches short-lived OIDC credentials; no static tokens required.
 
-# ---------- INPUTS ----------
+# ────────── INPUTS ───────────────────────────────────────────────────────────
 inputs:
   jar-path:
-    description: 'Absolute path to the JAR file to upload.'
+    description: 'Absolute path to the JAR file to deploy'
     required: true
-
   pom-path:
-    description: 'Absolute path to the POM file to upload.'
+    description: 'Absolute path to the POM file'
     required: true
-
   repository-id:
-    description: 'Artifactory repository key (e.g., libs-snapshot-local).'
+    description: 'Artifactory repository key (e.g. libs-snapshot-local)'
     required: true
-
   jfrog-url:
-    description: 'Base URL of your JFrog Platform (e.g., https://example.jfrog.io).'
+    description: 'Base JFrog Platform URL, e.g. https://acme.jfrog.io'
     required: true
-
   oidc-provider-name:
-    description: 'OIDC integration name configured in the JFrog UI.'
+    description: 'OIDC integration name configured in JFrog'
     required: true
-
   oidc-audience:
-    description: 'Optional audience claim for the OIDC token.'
+    description: 'Optional audience claim (leave blank if not used)'
+    required: false
+  java-version:
+    description: 'JDK version'
+    default: '17'
+    required: false
+  java-distribution:
+    description: 'JDK distribution'
+    default: 'temurin'
     required: false
 
-# ---------- OUTPUTS ----------
+# ────────── OUTPUTS ──────────────────────────────────────────────────────────
 outputs:
   status:
     description: 'success | failed'
     value: ${{ steps.set-status.outputs.status }}
 
-# ---------- RUNTIME ----------
 runs:
   using: composite
   steps:
-
-    # 1 · Validar que existan los archivos
-    - name: Validate JAR & POM paths
+    # 1. Verificar que los archivos existen
+    - name: Validate inputs
       shell: bash
       run: |
         for f in "${{ inputs.jar-path }}" "${{ inputs.pom-path }}"; do
           [[ -f "$f" ]] || { echo "::error::$f not found"; exit 1; }
         done
 
-    # 2 · Instalar y autenticar JFrog CLI con OIDC
-    - name: Setup JFrog CLI (OIDC)
+    # 2. Setup JFrog CLI with OIDC
+    - name: Setup JFrog CLI
       uses: jfrog/setup-jfrog-cli@v4
       env:
         JF_URL: ${{ inputs.jfrog-url }}
@@ -57,20 +58,32 @@ runs:
         oidc-provider-name: ${{ inputs.oidc-provider-name }}
         oidc-audience: ${{ inputs.oidc-audience }}
 
-    # 3 · Subir artefactos
-    - id: upload
-      name: Upload artifacts
+    # 3. Setup Java (Maven ya viene en runner, pero garantizamos el JDK)
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ inputs.java-distribution }}
+        java-version: ${{ inputs.java-version }}
+        cache: 'maven'
+
+    # 4. Deploy via Maven through JFrog CLI
+    - id: deploy
+      name: Maven deploy
       shell: bash
       run: |
         set -euo pipefail
-        jf rt upload "${{ inputs.jar-path }}" "${{ inputs.repository-id }}/"
-        jf rt upload "${{ inputs.pom-path }}" "${{ inputs.repository-id }}/"
+        jf rt mvn "deploy:deploy-file" \
+          -Dfile="${{ inputs.jar-path }}" \
+          -DpomFile="${{ inputs.pom-path }}" \
+          -DrepositoryId="${{ inputs.repository-id }}" \
+          -Durl="${{ inputs.jfrog-url }}/artifactory/${{ inputs.repository-id }}" \
+          -B
 
-    # 4 · Exponer el resultado
+    # 5. Resultado para el workflow
     - id: set-status
       if: always()
       shell: bash
       run: |
-        [[ "${{ steps.upload.outcome }}" == "success" ]] \
-          && echo "status=success" >> "$GITHUB_OUTPUT" \
-          || echo "status=failed"  >> "$GITHUB_OUTPUT"
+        [[ "${{ steps.deploy.outcome }}" == "success" ]] \
+          && echo "status=success" >>"$GITHUB_OUTPUT" \
+          || echo "status=failed"  >>"$GITHUB_OUTPUT"

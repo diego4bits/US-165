@@ -1,4 +1,4 @@
-name: Test JFrog Upload Action with Environments
+name: Test JFrog Maven Deploy with Environments
 
 on: [push, workflow_dispatch]
 
@@ -8,30 +8,30 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ matrix.env }}
 
-    # ──► OIDC requires this permission so GitHub can mint the short-lived JWT
+    # GitHub debe poder acuñar el JWT para OIDC
     permissions:
       id-token: write
+      contents: read
 
     strategy:
       fail-fast: false
       matrix:
-        env: [development, qa] 
+        env: [development, qa]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ─────── Dummy artefacts ────────────────────────────────────────────────
       - name: Generate unique data
         id: unique
-        shell: bash
         run: |
           ts=$(date +%s)
-          echo "timestamp=$ts"            >>"$GITHUB_OUTPUT"
+          echo "timestamp=$ts" >>"$GITHUB_OUTPUT"
           echo "version=1.0-${{ matrix.env }}.$ts" >>"$GITHUB_OUTPUT"
 
       - name: Create dummy POM
         id: pom
-        shell: bash
         run: |
           ver=${{ steps.unique.outputs.version }}
           pom_file="$PWD/dummy-artifact-$ver.pom"
@@ -48,31 +48,28 @@ jobs:
 
       - name: Create dummy JAR
         id: jar
-        shell: bash
         run: |
           ver=${{ steps.unique.outputs.version }}
           jar_file="$PWD/dummy-artifact-$ver.jar"
-          echo "Test content – ${{ steps.unique.outputs.timestamp }}" >content.txt
+          echo "Test content – ${{ steps.unique.outputs.timestamp }}" > content.txt
           zip "$jar_file" content.txt
           rm  content.txt
           echo "jar_path=$jar_file" >>"$GITHUB_OUTPUT"
 
-      - name: Run JFrog upload action [${{ matrix.env }}]
-        id: upload-step
-        uses: ./.github/actions/upload-to-jfrog        # ← nueva versión OIDC
+      # ─────── Deploy usando Maven + OIDC ─────────────────────────────────────
+      - name: Deploy to Artifactory via Maven (OIDC)
+        id: deploy
+        uses: ./.github/actions/upload-to-jfrog
         with:
           jar-path:           ${{ steps.jar.outputs.jar_path }}
           pom-path:           ${{ steps.pom.outputs.pom_path }}
-          repository-id:      ${{ vars.REPO_ID }}
-          jfrog-url:          ${{ vars.JF_URL }}       # define como GitHub var
-          oidc-provider-name: github                  # debe coincidir con la integración
-          oidc-audience:      my-aud                  # opcional — elimina si no lo usas
+          repository-id:      ${{ vars.REPO_ID }}      # p. ej. libs-snapshot-local
+          jfrog-url:          ${{ vars.JF_URL }}       # p. ej. https://acme.jfrog.io
+          oidc-provider-name: github                   # = nombre de la integración en JFrog
+          oidc-audience:      ""                       # opcional
 
-      - name: Verify action output
-        shell: bash
+      - name: Verify deployment
+        if: always()
         run: |
-          echo "Upload status: ${{ steps.upload-step.outputs.status }}"
-          [[ "${{ steps.upload-step.outputs.status }}" == "success" ]] || {
-            echo "::error::Upload action failed for ${{ matrix.env }}"
-            exit 1
-          }
+          echo "Status: ${{ steps.deploy.outputs.status }}"
+          test "${{ steps.deploy.outputs.status }}" = "success"
