@@ -41,23 +41,34 @@ runs:
       shell: bash
       run: |
         POM="${{ inputs.pom-path }}"
-        command -v xmllint >/dev/null || { echo "::error::xmllint missing"; exit 1; }
 
-        read -r GROUP ARTIFACT VERSION <<<"$(xmllint --xpath \
-          "concat(/*[local-name()='project']/*[local-name()='groupId'\
-                  |/*[local-name()='project']/*[local-name()='parent']/*[local-name()='groupId'], ' ', \
-                  /*[local-name()='project']/*[local-name()='artifactId'], ' ', \
-                  /*[local-name()='project']/*[local-name()='version'\
-                  |/*[local-name()='project']/*[local-name()='parent']/*[local-name()='version'])" \
-          "$POM")"
+        # ──► groupId  (cae al parent si el hijo no existe)
+        GROUP=$(xmllint --xpath \
+          'string((/*[local-name()="project"]/*[local-name()="groupId"] | \
+                   /*[local-name()="project"]/*[local-name()="parent"]/*[local-name()="groupId"])[1])' \
+          "$POM")
 
-        [[ -z $GROUP || -z $ARTIFACT || -z $VERSION ]] && \
-          { echo "::error::Cannot parse groupId/artifactId/version"; exit 1; }
+        # ──► artifactId
+        ARTIFACT=$(xmllint --xpath \
+          'string(/*[local-name()="project"]/*[local-name()="artifactId"][1])' \
+          "$POM")
+
+        # ──► version  (misma lógica que groupId)
+        VERSION=$(xmllint --xpath \
+          'string((/*[local-name()="project"]/*[local-name()="version"] | \
+                   /*[local-name()="project"]/*[local-name()="parent"]/*[local-name()="version"])[1])' \
+          "$POM")
+
+        # Validación defensiva
+        for v in "$GROUP" "$ARTIFACT" "$VERSION"; do
+          [[ -n $v ]] || { echo "::error::Cannot parse G/A/V from $POM"; exit 1; }
+        done
 
         PATH_PART=${GROUP//./\/}/$ARTIFACT/$VERSION
-        echo "path=$PATH_PART"        >>"$GITHUB_OUTPUT"
-        echo "artifact=$ARTIFACT"     >>"$GITHUB_OUTPUT"
-        echo "version=$VERSION"       >>"$GITHUB_OUTPUT"
+        echo "path=$PATH_PART"    >>"$GITHUB_OUTPUT"
+        echo "artifact=$ARTIFACT" >>"$GITHUB_OUTPUT"
+        echo "version=$VERSION"   >>"$GITHUB_OUTPUT"
+
 
     - name: Upload artefacts with JFrog CLI
       shell: bash
