@@ -52,6 +52,6 @@ jobs:
           jar-path:           ${{ steps.gen.outputs.jar }}
           repository-id:      ${{ vars.REPO_ID }}   # ej. libs-snapshot-local
           jfrog-url:          ${{ vars.JF_URL }}    # ej. https://acme.jfrog.io
-          jfrog-repo-path: prueba/mis-jars/pepe.jar
+          jfrog-repo-path: prueba/mis-jars/
           oidc-provider-name: github
           oidc-audience:      my-aud
