@@ -46,7 +46,7 @@ jobs:
           echo "jar=$jar" >>"$GITHUB_OUTPUT"
 
       - name: Deploy via JFrog CLI (OIDC)
-        uses: ./.github/actions/jfrog-maven-deployer
+        uses: ./.github/actions/action
         with:
           pom-path:           ${{ steps.gen.outputs.pom }}
           jar-path:           ${{ steps.gen.outputs.jar }}
