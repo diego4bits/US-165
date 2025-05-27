@@ -97,10 +97,11 @@ runs:
       shell: bash
       run: |
         mvn org.apache.maven.plugins:maven-deploy-plugin:3.1.1:deploy-file \
-        -Dfile=target/mi-artefacto.jar \
-        -DpomFile=target/mi-artefacto.pom \
-        -DrepositoryId=test-libs-release-local \
-        -Durl=https://yourcompany.jfrog.io/artifactory/test-libs-release-local
+        -Dfile="${{ inputs.jar-path }}" \
+        -DpomFile="${{ inputs.pom-path }}" \
+        -DrepositoryId="${{ inputs.repository-id }}" \
+        -Durl="${{ inputs.jfrog-url }}/artifactory/${{ inputs.repository-id }}" \
+        -s "$RUNNER_TEMP/settings.xml"
 
 
 
