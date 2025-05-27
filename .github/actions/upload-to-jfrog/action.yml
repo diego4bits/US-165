@@ -1,102 +1,76 @@
 name: 'JFrog Artifact Uploader'
-description: |
-  Uploads a specified JAR and POM file to a specific JFrog Artifactory repository.
-  The JFrog URL input must be the full URL to the target repository.
-  IMPORTANT: This action requires the `jfrog-access-token` to be passed as an input from the workflow.
+description: >
+  Uploads a JAR and its POM to JFrog Artifactory using JFrog CLI
+  authenticated through OpenID Connect (no long-lived access tokens).
 
+# ---------- INPUTS ----------
 inputs:
   jar-path:
-    description: 'Absolute path to the JAR file to be uploaded.'
+    description: 'Absolute path to the JAR file to upload.'
     required: true
-  pom-path:
-    description: 'Absolute path to the POM file.'
-    required: true
-  repository-id:
-    description: 'The ID of the target JFrog repository (must match the server ID in settings.xml).'
-    required: true
-  jfrog-url:
-    description: 'The full URL of the target JFrog Artifactory repository (e.g., https://yourcompany.jfrog.io/artifactory/libs-release-local).'
-    required: true
-  jfrog-access-token:
-    description: 'The JFrog access token.'
-    required: true
-  java-version:
-    description: 'The Java version to use.'
-    required: false
-    default: '17'
-  java-distribution:
-    description: 'The Java distribution to use.'
-    required: false
-    default: 'temurin'
-  packaging:
-    description: 'The packaging type for Maven deployment.'
-    required: false
-    default: 'jar'
 
+  pom-path:
+    description: 'Absolute path to the POM file to upload.'
+    required: true
+
+  repository-id:
+    description: 'Artifactory repository key (e.g., libs-snapshot-local).'
+    required: true
+
+  jfrog-url:
+    description: 'Base URL of your JFrog Platform (e.g., https://example.jfrog.io).'
+    required: true
+
+  oidc-provider-name:
+    description: 'OIDC integration name configured in the JFrog UI.'
+    required: true
+
+  oidc-audience:
+    description: 'Optional audience claim for the OIDC token.'
+    required: false
+
+# ---------- OUTPUTS ----------
 outputs:
   status:
-    description: 'Indicates if the upload was successful ("success") or failed ("failed").'
+    description: 'success | failed'
     value: ${{ steps.set-status.outputs.status }}
 
+# ---------- RUNTIME ----------
 runs:
-  using: 'composite'
+  using: composite
   steps:
-    - name: Validate JAR path
+
+    # 1 · Validar que existan los archivos
+    - name: Validate JAR & POM paths
       shell: bash
       run: |
-        if [ ! -f "${{ inputs.jar-path }}" ]; then
-          echo "::error::JAR file not found at ${{ inputs.jar-path }}"
-          exit 1
-        fi
+        for f in "${{ inputs.jar-path }}" "${{ inputs.pom-path }}"; do
+          [[ -f "$f" ]] || { echo "::error::$f not found"; exit 1; }
+        done
 
-    - name: Validate POM path
+    # 2 · Instalar y autenticar JFrog CLI con OIDC
+    - name: Setup JFrog CLI (OIDC)
+      uses: jfrog/setup-jfrog-cli@v4
+      env:
+        JF_URL: ${{ inputs.jfrog-url }}
+      with:
+        oidc-provider-name: ${{ inputs.oidc-provider-name }}
+        oidc-audience: ${{ inputs.oidc-audience }}
+
+    # 3 · Subir artefactos
+    - id: upload
+      name: Upload artifacts
       shell: bash
       run: |
-        if [ ! -f "${{ inputs.pom-path }}" ]; then
-          echo "::error::POM file not found at ${{ inputs.pom-path }}"
-          exit 1
-        fi
+        set -euo pipefail
+        jf rt upload "${{ inputs.jar-path }}" "${{ inputs.repository-id }}/"
+        jf rt upload "${{ inputs.pom-path }}" "${{ inputs.repository-id }}/"
 
-    - id: write-settings
-      name: Create Maven settings.xml
-      shell: bash
-      run: |
-        SETTINGS_PATH="${{ runner.temp }}/jfrog-settings.xml"
-        echo "Creating settings.xml at $SETTINGS_PATH"
-        cat > "$SETTINGS_PATH" <<EOF
-        <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                  xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
-          <servers>
-            <server>
-              <id>${{ inputs.repository-id }}</id>
-              <username>_token</username>
-              <password>${{ inputs.jfrog-access-token }}</password>
-            </server>
-          </servers>
-        </settings>
-        EOF
-        echo "settings-path=$SETTINGS_PATH" >> "$GITHUB_OUTPUT"
-
-    - id: deploy
-      name: Deploy artifact to JFrog
-      shell: bash
-      run: |
-        mvn deploy:deploy-file -B \
-          -Dfile="${{ inputs.jar-path }}" \
-          -DpomFile="${{ inputs.pom-path }}" \
-          -DrepositoryId="${{ inputs.repository-id }}" \
-          -Durl="${{ inputs.jfrog-url }}" \
-          -Dpackaging="${{ inputs.packaging }}" \
-          -s "${{ steps.write-settings.outputs.settings-path }}"
-
+    # 4 · Exponer el resultado
     - id: set-status
       if: always()
-      name: Set final status output
       shell: bash
       run: |
-        if [ "${{ steps.deploy.outcome }}" == "success" ]; then
-          echo "status=success" >> "$GITHUB_OUTPUT"
-        else
-          echo "status=failed" >> "$GITHUB_OUTPUT"
-        fi
+        [[ "${{ steps.upload.outcome }}" == "success" ]] \
+          && echo "status=success" >> "$GITHUB_OUTPUT" \
+          || echo "status=failed"  >> "$GITHUB_OUTPUT"

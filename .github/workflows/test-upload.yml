@@ -8,66 +8,71 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ matrix.env }}
 
+    # ──► OIDC requires this permission so GitHub can mint the short-lived JWT
+    permissions:
+      id-token: write
+
     strategy:
       fail-fast: false
       matrix:
         env: [development, qa] 
-        
+
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate Unique Data
+      - name: Generate unique data
         id: unique
         shell: bash
         run: |
-          TIMESTAMP=$(date +%s)
-          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
-          echo "version=1.0-${{ matrix.env }}.${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+          ts=$(date +%s)
+          echo "timestamp=$ts"            >>"$GITHUB_OUTPUT"
+          echo "version=1.0-${{ matrix.env }}.$ts" >>"$GITHUB_OUTPUT"
 
-      - name: Create Dummy POM
+      - name: Create dummy POM
         id: pom
         shell: bash
         run: |
-          VERSION=${{ steps.unique.outputs.version }}
-          POM_FILE="$(pwd)/dummy-artifact-${VERSION}.pom"
-          cat > "$POM_FILE" <<EOF
+          ver=${{ steps.unique.outputs.version }}
+          pom_file="$PWD/dummy-artifact-$ver.pom"
+          cat >"$pom_file" <<EOF
           <project>
             <modelVersion>4.0.0</modelVersion>
             <groupId>com.test.local</groupId>
             <artifactId>dummy-artifact</artifactId>
-            <version>${VERSION}</version>
+            <version>$ver</version>
             <packaging>jar</packaging>
           </project>
           EOF
-          echo "pom_path=$POM_FILE" >> "$GITHUB_OUTPUT"
+          echo "pom_path=$pom_file" >>"$GITHUB_OUTPUT"
 
-      - name: Create Dummy JAR
+      - name: Create dummy JAR
         id: jar
         shell: bash
         run: |
-          VERSION=${{ steps.unique.outputs.version }}
-          JAR_FILE="$(pwd)/dummy-artifact-${VERSION}.jar"
-          echo "Test content - ${{ steps.unique.outputs.timestamp }}" > content.txt
-          zip "$JAR_FILE" content.txt
-          rm content.txt
-          echo "jar_path=$JAR_FILE" >> "$GITHUB_OUTPUT"
+          ver=${{ steps.unique.outputs.version }}
+          jar_file="$PWD/dummy-artifact-$ver.jar"
+          echo "Test content – ${{ steps.unique.outputs.timestamp }}" >content.txt
+          zip "$jar_file" content.txt
+          rm  content.txt
+          echo "jar_path=$jar_file" >>"$GITHUB_OUTPUT"
 
-      - name: Run JFrog Upload Action [${{ matrix.env }}]
+      - name: Run JFrog upload action [${{ matrix.env }}]
         id: upload-step
-        uses: ./.github/actions/upload-to-jfrog
+        uses: ./.github/actions/upload-to-jfrog        # ← nueva versión OIDC
         with:
-          jar-path: ${{ steps.jar.outputs.jar_path }}
-          pom-path: ${{ steps.pom.outputs.pom_path }}
-          repository-id: ${{ vars.REPO_ID }}
-          jfrog-url: ${{ vars.JFROG_URL }}
-          jfrog-access-token: ${{ secrets.JFROG_ACCESS_TOKEN }}
+          jar-path:           ${{ steps.jar.outputs.jar_path }}
+          pom-path:           ${{ steps.pom.outputs.pom_path }}
+          repository-id:      ${{ vars.REPO_ID }}
+          jfrog-url:          ${{ vars.JF_URL }}       # define como GitHub var
+          oidc-provider-name: github                  # debe coincidir con la integración
+          oidc-audience:      my-aud                  # opcional — elimina si no lo usas
 
-      - name: Verify Action Output
+      - name: Verify action output
         shell: bash
         run: |
-          echo "Action finished with status: ${{ steps.upload-step.outputs.status }}"
-          if [ "${{ steps.upload-step.outputs.status }}" != "success" ]; then
+          echo "Upload status: ${{ steps.upload-step.outputs.status }}"
+          [[ "${{ steps.upload-step.outputs.status }}" == "success" ]] || {
             echo "::error::Upload action failed for ${{ matrix.env }}"
             exit 1
-          fi
+          }
