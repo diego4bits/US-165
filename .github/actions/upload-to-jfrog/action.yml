@@ -58,33 +58,50 @@ runs:
         oidc-provider-name: ${{ inputs.oidc-provider-name }}
         oidc-audience: ${{ inputs.oidc-audience }}
     # 3. Configure Maven fro JFrog CLI
-    - name: Configure Maven for JFrog CLI (remote resolution)
+    - name: Generate Maven settings.xml (direct Central for plugins)
       shell: bash
       run: |
-        # Sitúate en el directorio del POM
-        cd "$(dirname "${{ inputs.pom-path }}")"
+        cat > "$RUNNER_TEMP/settings.xml" <<EOF
+        <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+          <servers>
+            <server>
+              <id>${{ inputs.repository-id }}</id>
+              <username>_token</username>
+              <password>\${env.JF_ACCESS_TOKEN}</password>
+            </server>
+          </servers>
+          <mirrors>
+            <!-- 
+              Mirror *everything* to artifactory-remote for dependencies,
+              but plugins come from pluginRepositories below.
+            -->
+            <mirror>
+              <id>central-mirror</id>
+              <mirrorOf>*</mirrorOf>
+              <url>https://trial0kfliz.jfrog.io/artifactory/remote-maven-central</url>
+            </mirror>
+          </mirrors>
+          <pluginRepositories>
+            <pluginRepository>
+              <id>central</id>
+              <name>Maven Central</name>
+              <url>https://repo1.maven.org/maven2</url>
+              <releases><enabled>true</enabled></releases>
+              <snapshots><enabled>false</enabled></snapshots>
+            </pluginRepository>
+          </pluginRepositories>
+        </settings>
+        EOF
 
-        jf rt mvn-config \
-          --server-id-deploy=setup-jfrog-cli-server \
-          --server-id-resolve=setup-jfrog-cli-server \
-          --repo-deploy-releases=${{ inputs.repository-id }} \
-          --repo-deploy-snapshots=${{ inputs.repository-id }} \
-          --repo-resolve-releases=remote-maven-central \
-          --repo-resolve-snapshots=remote-maven-central
-
-
-
-
-    
-
-    - name: Deploy with Maven to Artifactory
+    - name: Deploy with Maven & explicit plugin repo
       shell: bash
       run: |
-        jf rt mvn "deploy:deploy-file" \
+        mvn deploy:deploy-file \
           -Dfile="${{ inputs.jar-path }}" \
           -DpomFile="${{ inputs.pom-path }}" \
           -DrepositoryId="${{ inputs.repository-id }}" \
-          -Durl="${{ inputs.jfrog-url }}" \
+          -Durl="${{ inputs.jfrog-url }}/artifactory/${{ inputs.repository-id }}" \
+          -s "$RUNNER_TEMP/settings.xml" \
           -B
 
 
