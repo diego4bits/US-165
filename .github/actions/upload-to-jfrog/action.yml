@@ -10,6 +10,7 @@ inputs:
   jfrog-url:        { description: 'https://acme.jfrog.io', required: true }
   oidc-provider-name: { description: 'OIDC integration name', required: true }
   oidc-audience:    { description: 'Optional audience claim', required: false }
+  jfrog-repo: {description: 'Path of the Jfrog Repo', required: true}
 
 runs:
   using: composite
@@ -22,12 +23,6 @@ runs:
           [[ -f "$f" ]] || { echo "::error::$f not found"; exit 1; }
         done
 
-    - name: Install xmllint
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libxml2-utils
-
     - name: Setup JFrog CLI (OIDC)
       uses: jfrog/setup-jfrog-cli@v4
       env:
@@ -36,44 +31,10 @@ runs:
         oidc-provider-name: ${{ inputs.oidc-provider-name }}
         oidc-audience:     ${{ inputs.oidc-audience }}
 
-    - name: Extract GAV with xmllint
-      id: gav
-      shell: bash
-      run: |
-        POM="${{ inputs.pom-path }}"
-
-        # ──► groupId  (cae al parent si el hijo no existe)
-        GROUP=$(xmllint --xpath \
-          'string((/*[local-name()="project"]/*[local-name()="groupId"] | \
-                   /*[local-name()="project"]/*[local-name()="parent"]/*[local-name()="groupId"])[1])' \
-          "$POM")
-
-        # ──► artifactId
-        ARTIFACT=$(xmllint --xpath \
-          'string(/*[local-name()="project"]/*[local-name()="artifactId"][1])' \
-          "$POM")
-
-        # ──► version  (misma lógica que groupId)
-        VERSION=$(xmllint --xpath \
-          'string((/*[local-name()="project"]/*[local-name()="version"] | \
-                   /*[local-name()="project"]/*[local-name()="parent"]/*[local-name()="version"])[1])' \
-          "$POM")
-
-        # Validación defensiva
-        for v in "$GROUP" "$ARTIFACT" "$VERSION"; do
-          [[ -n $v ]] || { echo "::error::Cannot parse G/A/V from $POM"; exit 1; }
-        done
-
-        PATH_PART=${GROUP//./\/}/$ARTIFACT/$VERSION
-        echo "path=$PATH_PART"    >>"$GITHUB_OUTPUT"
-        echo "artifact=$ARTIFACT" >>"$GITHUB_OUTPUT"
-        echo "version=$VERSION"   >>"$GITHUB_OUTPUT"
-
-
     - name: Upload artefacts with JFrog CLI
       shell: bash
       run: |
         jf rt upload "${{ inputs.pom-path }}" \
-          "${{ inputs.repository-id }}/${{ steps.gav.outputs.path }}/" --flat=true
+          "${{ inputs.jfrog-repo-path }}/" --flat=true
         jf rt upload "${{ inputs.jar-path }}" \
           "${{ inputs.repository-id }}/${{ steps.gav.outputs.path }}/" --flat=true
