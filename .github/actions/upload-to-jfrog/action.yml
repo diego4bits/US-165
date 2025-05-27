@@ -57,7 +57,13 @@ runs:
       with:
         oidc-provider-name: ${{ inputs.oidc-provider-name }}
         oidc-audience: ${{ inputs.oidc-audience }}
-
+    # 3. Configure Maven fro JFrog CLI
+    - name: Configure Maven for JFrog CLI
+      shell: bash
+      run: |
+        jf rt mvn-config "${{ inputs.pom-path }}" \
+          --server-id=setup-jfrog-cli-server
+    
     # 4. Deploy via Maven through JFrog CLI
     - id: deploy
       name: Maven deploy
