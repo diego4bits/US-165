@@ -37,4 +37,4 @@ runs:
         jf rt upload "${{ inputs.pom-path }}" \
           "${{ inputs.jfrog-repo-path }}/" --flat=true
         jf rt upload "${{ inputs.jar-path }}" \
-          "${{ inputs.repository-id }}/${{ steps.gav.outputs.path }}/" --flat=true
+          "${{ inputs.jfrog-repo-path }}" --flat=true
