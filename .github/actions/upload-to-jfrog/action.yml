@@ -23,6 +23,7 @@ runs:
         done
 
     - name: Install xmllint
+      shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y libxml2-utils
