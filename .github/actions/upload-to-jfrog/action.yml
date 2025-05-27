@@ -1,107 +1,62 @@
-name: 'JFrog Maven Deployer'
+name: 'JFrog Maven Deployer (CLI-only)'
 description: >
-  Deploys a JAR and its POM to Artifactory with Maven CLI.
-  JFrog CLI fetches short-lived OIDC credentials; no static tokens required.
+  Uploads a JAR and its POM to Artifactory using only JFrog CLI.
+  JFrog CLI fetches short-lived OIDC credentials – no static tokens.
 
-# ────────── INPUTS ───────────────────────────────────────────────────────────
 inputs:
-  jar-path:
-    description: 'Absolute path to the JAR file to deploy'
-    required: true
-  pom-path:
-    description: 'Absolute path to the POM file'
-    required: true
-  repository-id:
-    description: 'Artifactory repository key (e.g. libs-snapshot-local)'
-    required: true
-  jfrog-url:
-    description: 'Base JFrog Platform URL, e.g. https://acme.jfrog.io'
-    required: true
-  oidc-provider-name:
-    description: 'OIDC integration name configured in JFrog'
-    required: true
-  oidc-audience:
-    description: 'Optional audience claim (leave blank if not used)'
-    required: false
-  java-version:
-    description: 'JDK version'
-    default: '17'
-    required: false
-  java-distribution:
-    description: 'JDK distribution'
-    default: 'temurin'
-    required: false
-
-# ────────── OUTPUTS ──────────────────────────────────────────────────────────
-outputs:
-  status:
-    description: 'success | failed'
-    value: ${{ steps.set-status.outputs.status }}
+  jar-path:         { description: 'Absolute path to the JAR', required: true }
+  pom-path:         { description: 'Absolute path to the POM', required: true }
+  repository-id:    { description: 'Repo key (e.g. libs-snapshot-local)', required: true }
+  jfrog-url:        { description: 'https://acme.jfrog.io', required: true }
+  oidc-provider-name: { description: 'OIDC integration name', required: true }
+  oidc-audience:    { description: 'Optional audience claim', required: false }
 
 runs:
   using: composite
   steps:
-    # 1. Verificar que los archivos existen
-    - name: Validate inputs
+
+    - name: Validate artefacts exist
       shell: bash
       run: |
         for f in "${{ inputs.jar-path }}" "${{ inputs.pom-path }}"; do
           [[ -f "$f" ]] || { echo "::error::$f not found"; exit 1; }
         done
 
-    # 2. Setup JFrog CLI with OIDC
-    - name: Setup JFrog CLI
+    - name: Setup JFrog CLI (OIDC)
       uses: jfrog/setup-jfrog-cli@v4
       env:
         JF_URL: ${{ inputs.jfrog-url }}
       with:
         oidc-provider-name: ${{ inputs.oidc-provider-name }}
-        oidc-audience: ${{ inputs.oidc-audience }}
-    # 3. Configure Maven fro JFrog CLI
-    - name: Generate Maven settings.xml (direct Central for plugins)
+        oidc-audience:     ${{ inputs.oidc-audience }}
+
+    - name: Extract GAV with xmllint
+      id: gav
       shell: bash
       run: |
-        cat > "$RUNNER_TEMP/settings.xml" <<EOF
-        <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
-          <servers>
-            <server>
-              <id>${{ inputs.repository-id }}</id>
-              <username>_token</username>
-              <password>\${env.JF_ACCESS_TOKEN}</password>
-            </server>
-          </servers>
-          <mirrors>
-            <!-- 
-              Mirror *everything* to artifactory-remote for dependencies,
-              but plugins come from pluginRepositories below.
-            -->
-            <mirror>
-              <id>central-mirror</id>
-              <mirrorOf>*</mirrorOf>
-              <url>https://trial0kfliz.jfrog.io/artifactory/remote-maven-central</url>
-            </mirror>
-          </mirrors>
-          <pluginRepositories>
-            <pluginRepository>
-              <id>central</id>
-              <name>Maven Central</name>
-              <url>https://repo1.maven.org/maven2</url>
-              <releases><enabled>true</enabled></releases>
-              <snapshots><enabled>false</enabled></snapshots>
-            </pluginRepository>
-          </pluginRepositories>
-        </settings>
-        EOF
+        POM="${{ inputs.pom-path }}"
+        command -v xmllint >/dev/null || { echo "::error::xmllint missing"; exit 1; }
 
-    - name: Deploy with Maven & explicit plugin repo
+        read -r GROUP ARTIFACT VERSION <<<"$(xmllint --xpath \
+          "concat(/*[local-name()='project']/*[local-name()='groupId'\
+                  |/*[local-name()='project']/*[local-name()='parent']/*[local-name()='groupId'], ' ', \
+                  /*[local-name()='project']/*[local-name()='artifactId'], ' ', \
+                  /*[local-name()='project']/*[local-name()='version'\
+                  |/*[local-name()='project']/*[local-name()='parent']/*[local-name()='version'])" \
+          "$POM")"
+
+        [[ -z $GROUP || -z $ARTIFACT || -z $VERSION ]] && \
+          { echo "::error::Cannot parse groupId/artifactId/version"; exit 1; }
+
+        PATH_PART=${GROUP//./\/}/$ARTIFACT/$VERSION
+        echo "path=$PATH_PART"        >>"$GITHUB_OUTPUT"
+        echo "artifact=$ARTIFACT"     >>"$GITHUB_OUTPUT"
+        echo "version=$VERSION"       >>"$GITHUB_OUTPUT"
+
+    - name: Upload artefacts with JFrog CLI
       shell: bash
       run: |
-        mvn org.apache.maven.plugins:maven-deploy-plugin:3.1.1:deploy-file \
-        -Dfile="${{ inputs.jar-path }}" \
-        -DpomFile="${{ inputs.pom-path }}" \
-        -DrepositoryId="${{ inputs.repository-id }}" \
-        -Durl="${{ inputs.jfrog-url }}/artifactory/${{ inputs.repository-id }}" \
-        -s "$RUNNER_TEMP/settings.xml"
-
-
-
+        jf rt upload "${{ inputs.pom-path }}" \
+          "${{ inputs.repository-id }}/${{ steps.gav.outputs.path }}/" --flat=true
+        jf rt upload "${{ inputs.jar-path }}" \
+          "${{ inputs.repository-id }}/${{ steps.gav.outputs.path }}/" --flat=true

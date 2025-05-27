@@ -1,16 +1,14 @@
-name: Test JFrog Maven Deploy with Environments
+name: Test JFrog Maven Deploy (CLI-only)
 
 on: [push, workflow_dispatch]
 
 jobs:
-  test-upload:
-    name: Test on ${{ matrix.env }}
+  upload:
     runs-on: ubuntu-latest
     environment: ${{ matrix.env }}
 
-    # GitHub debe poder acuñar el JWT para OIDC
     permissions:
-      id-token: write
+      id-token: write   # GitHub → JWT → JFrog OIDC
       contents: read
 
     strategy:
@@ -19,23 +17,19 @@ jobs:
         env: [development, qa]
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ─────── Dummy artefacts ────────────────────────────────────────────────
-      - name: Generate unique data
-        id: unique
+      - name: Generate dummy artefacts
+        id: gen
+        shell: bash
         run: |
           ts=$(date +%s)
-          echo "timestamp=$ts" >>"$GITHUB_OUTPUT"
-          echo "version=1.0-${{ matrix.env }}.$ts" >>"$GITHUB_OUTPUT"
+          ver="1.0-${{ matrix.env }}.$ts"
 
-      - name: Create dummy POM
-        id: pom
-        run: |
-          ver=${{ steps.unique.outputs.version }}
-          pom_file="$PWD/dummy-artifact-$ver.pom"
-          cat >"$pom_file" <<EOF
+          pom="dummy-artifact-$ver.pom"
+          jar="dummy-artifact-$ver.jar"
+
+          cat >"$pom" <<EOF
           <project>
             <modelVersion>4.0.0</modelVersion>
             <groupId>com.test.local</groupId>
@@ -44,27 +38,19 @@ jobs:
             <packaging>jar</packaging>
           </project>
           EOF
-          echo "pom_path=$pom_file" >>"$GITHUB_OUTPUT"
 
-      - name: Create dummy JAR
-        id: jar
-        run: |
-          ver=${{ steps.unique.outputs.version }}
-          jar_file="$PWD/dummy-artifact-$ver.jar"
-          echo "Test content – ${{ steps.unique.outputs.timestamp }}" > content.txt
-          zip "$jar_file" content.txt
-          rm  content.txt
-          echo "jar_path=$jar_file" >>"$GITHUB_OUTPUT"
+          printf 'Test content – %s\n' "$ts" >content.txt
+          zip "$jar" content.txt && rm content.txt
 
-      # ─────── Deploy usando Maven + OIDC ─────────────────────────────────────
-      - name: Deploy to Artifactory via Maven (OIDC)
-        id: deploy
-        uses: ./.github/actions/upload-to-jfrog
+          echo "pom=$pom" >>"$GITHUB_OUTPUT"
+          echo "jar=$jar" >>"$GITHUB_OUTPUT"
+
+      - name: Deploy via JFrog CLI (OIDC)
+        uses: ./.github/actions/jfrog-maven-deployer
         with:
-          jar-path:           ${{ steps.jar.outputs.jar_path }}
-          pom-path:           ${{ steps.pom.outputs.pom_path }}
-          repository-id:      ${{ vars.REPO_ID }}      # p. ej. libs-snapshot-local
-          jfrog-url:          ${{ vars.JF_URL }}       # p. ej. https://acme.jfrog.io
-          oidc-provider-name: github                   # = nombre de la integración en JFrog
-          oidc-audience:      my-aud                       # opcional
-
+          pom-path:           ${{ steps.gen.outputs.pom }}
+          jar-path:           ${{ steps.gen.outputs.jar }}
+          repository-id:      ${{ vars.REPO_ID }}   # ej. libs-snapshot-local
+          jfrog-url:          ${{ vars.JF_URL }}    # ej. https://acme.jfrog.io
+          oidc-provider-name: github
+          oidc-audience:      my-aud
