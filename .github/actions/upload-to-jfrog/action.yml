@@ -58,10 +58,10 @@ runs:
         oidc-provider-name: ${{ inputs.oidc-provider-name }}
         oidc-audience: ${{ inputs.oidc-audience }}
     # 3. Configure Maven fro JFrog CLI
-    - name: Configure Maven for JFrog CLI
+    - name: Configure Maven for JFrog CLI (remote resolution)
       shell: bash
       run: |
-        # mueve al dir del POM para que mvn-config lo detecte
+        # Sitúate en el directorio del POM
         cd "$(dirname "${{ inputs.pom-path }}")"
 
         jf rt mvn-config \
@@ -69,8 +69,9 @@ runs:
           --server-id-resolve=setup-jfrog-cli-server \
           --repo-deploy-releases=${{ inputs.repository-id }} \
           --repo-deploy-snapshots=${{ inputs.repository-id }} \
-          --repo-resolve-releases=${{ inputs.repository-id }} \
-          --repo-resolve-snapshots=${{ inputs.repository-id }}
+          --repo-resolve-releases=remote-maven-central \
+          --repo-resolve-snapshots=remote-maven-central
+
 
 
 
