@@ -66,7 +66,7 @@ jobs:
           repository-id:      ${{ vars.REPO_ID }}      # p. ej. libs-snapshot-local
           jfrog-url:          ${{ vars.JF_URL }}       # p. ej. https://acme.jfrog.io
           oidc-provider-name: github                   # = nombre de la integración en JFrog
-          oidc-audience:      ""                       # opcional
+          oidc-audience:      my-aud                       # opcional
 
       - name: Verify deployment
         if: always()
