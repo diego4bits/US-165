@@ -1,4 +1,4 @@
-name: 'JFrog Maven Deployer (CLI-only)'
+name: 'JFrog Maven Deployer'
 description: >
   Uploads a JAR and its POM to Artifactory using only JFrog CLI.
   JFrog CLI fetches short-lived OIDC credentials – no static tokens.
@@ -6,11 +6,10 @@ description: >
 inputs:
   jar-path:         { description: 'Absolute path to the JAR', required: true }
   pom-path:         { description: 'Absolute path to the POM', required: true }
-  repository-id:    { description: 'Repo key (e.g. libs-snapshot-local)', required: true }
   jfrog-url:        { description: 'https://acme.jfrog.io', required: true }
+  jfrog-repo-path: {description: 'Path of the Jfrog Repo that the artifact will be upload', required: true}
   oidc-provider-name: { description: 'OIDC integration name', required: true }
   oidc-audience:    { description: 'Optional audience claim', required: false }
-  jfrog-repo: {description: 'Path of the Jfrog Repo', required: true}
 
 runs:
   using: composite

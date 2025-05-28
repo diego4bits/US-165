@@ -8,7 +8,7 @@ jobs:
     environment: ${{ matrix.env }}
 
     permissions:
-      id-token: write   # GitHub → JWT → JFrog OIDC
+      id-token: write   
       contents: read
 
     strategy:
@@ -50,8 +50,7 @@ jobs:
         with:
           pom-path:           ${{ steps.gen.outputs.pom }}
           jar-path:           ${{ steps.gen.outputs.jar }}
-          repository-id:      ${{ vars.REPO_ID }}   # ej. libs-snapshot-local
-          jfrog-url:          ${{ vars.JF_URL }}    # ej. https://acme.jfrog.io
-          jfrog-repo-path: prueba/mis-jars/
-          oidc-provider-name: github
-          oidc-audience:      my-aud
+          jfrog-url:          ${{ vars.JF_URL }}    
+          jfrog-repo-path: ${{ vars.JF_REPO_PATH }}
+          oidc-provider-name: ${{ vars.OIDC_PROVIDER_NAME }}
+          oidc-audience:      ${{ vars.OIDC_AUDIENCE }}
