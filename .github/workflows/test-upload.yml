@@ -51,4 +51,5 @@ jobs:
           pom-path:           ${{ steps.gen.outputs.pom }}
           jar-path:           ${{ steps.gen.outputs.jar }}
           jfrog-url:          ${{ vars.JF_URL }}    
-          jfrog-repo-path: ${{ vars.JF_REPO_PATH }}
+          jfrog-repo-path:    ${{ vars.JF_REPO_PATH }}
+          jf-access-token: ${{ secrets.JF_ACCESS_TOKEN }}
