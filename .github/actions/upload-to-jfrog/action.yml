@@ -26,9 +26,8 @@ runs:
       uses: jfrog/setup-jfrog-cli@v4
       env:
         JF_URL: ${{ inputs.jfrog-url }}
-      with:
-        oidc-provider-name: ${{ inputs.oidc-provider-name }}
-        oidc-audience:     ${{ inputs.oidc-audience }}
+        JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
 
     - name: Upload artefacts with JFrog CLI
       shell: bash
