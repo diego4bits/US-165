@@ -1,4 +1,4 @@
-name: 'JFrog Maven Deployer'
+name: 'JFrog Maven Deployer - Auth Token'
 description: >
   Uploads a JAR and its POM to Artifactory using only JFrog CLI.
   JFrog CLI fetches short-lived OIDC credentials – no static tokens.
