@@ -8,8 +8,7 @@ inputs:
   pom-path:         { description: 'Absolute path to the POM', required: true }
   jfrog-url:        { description: 'https://acme.jfrog.io', required: true }
   jfrog-repo-path: {description: 'Path of the Jfrog Repo that the artifact will be upload', required: true}
-  oidc-provider-name: { description: 'OIDC integration name', required: true }
-  oidc-audience:    { description: 'Optional audience claim', required: false }
+  jf-access-token: { description: 'JFrog Access Token', required: true }
 
 runs:
   using: composite
@@ -22,7 +21,7 @@ runs:
           [[ -f "$f" ]] || { echo "::error::$f not found"; exit 1; }
         done
 
-    - name: Setup JFrog CLI (OIDC)
+    - name: Setup JFrog CLI 
       uses: jfrog/setup-jfrog-cli@v4
       env:
         JF_URL: ${{ inputs.jfrog-url }}
